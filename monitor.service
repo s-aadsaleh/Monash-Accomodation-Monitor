@@ -1,0 +1,14 @@
+[Unit]
+Description=Monash Accommodation Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/monash-monitor
+ExecStart=/usr/bin/python3 /home/ubuntu/monash-monitor/monitor.py --interval 100
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

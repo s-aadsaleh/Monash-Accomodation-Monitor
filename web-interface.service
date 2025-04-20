@@ -1,0 +1,14 @@
+[Unit]
+Description=Monash Accommodation Web Interface
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/monash-monitor
+ExecStart=/usr/bin/python3 /home/ubuntu/monash-monitor/web_interface.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Monash Accommodation Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.running {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.not-running {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status.unknown {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .content-box {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .tab-container {
+            margin: 20px 0;
+        }
+        .tab-buttons {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab-button {
+            padding: 10px 20px;
+            background: #f1f1f1;
+            border: none;
+            cursor: pointer;
+            margin-right: 5px;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab-button.active {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-bottom: 1px solid #fff;
+            margin-bottom: -1px;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-top: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .monash-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #006DA4;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .monash-button:hover {
+            background-color: #005a8c;
+        }
+        .info-box {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .email-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .last-change {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        .toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 5px;
+            padding: 16px;
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+        
+        .toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+        
+        @keyframes fadein {
+            from {bottom: 0; opacity: 0;}
+            to {bottom: 30px; opacity: 1;}
+        }
+        
+        @keyframes fadeout {
+            from {bottom: 30px; opacity: 1;}
+            to {bottom: 0; opacity: 0;}
+        }
+    </style>
+</head>
+<body>
+    <h1>Monash Accommodation Monitor</h1>
+    
+    <div class="status {{ 'running' if status == 'Running' else 'not-running' if status == 'Not Running' else 'unknown' }}">
+        Status: {{ status }}
+    </div>
+    
+    <div class="info-box">
+        <div>Current interval: {{ interval_display }}</div>
+    </div>
+    
+    <div class="email-info">
+        <div>Email notifications will be sent to: <strong>{{ email_recipient }}</strong></div>
+    </div>
+    
+    <a href="https://www.monash.edu/accommodation/apply/apply-now" class="monash-button" target="_blank">
+        Visit Monash Accommodation Page
+    </a>
+    
+    <div class="tab-container">
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="showTab('latest')">Latest Content</button>
+            <button class="tab-button" onclick="showTab('archive')">Archive</button>
+        </div>
+        
+        <div id="latest" class="tab-content active">
+            <h2>Latest Content {% if latest_filename %}({{ latest_filename }}){% endif %}</h2>
+            <pre>{{ latest_content }}</pre>
+            <a href="#" onclick="sendTestEmail(); return false;" class="monash-button">Send Test Email</a>
+        </div>
+        
+        <div id="archive" class="tab-content">
+            <h2>Archive Files</h2>
+            <ul class="archive-list">
+                {% for file in archive_files %}
+                <li>
+                    <a href="#" onclick="loadArchive('{{ file.split('/')[-1] }}')">{{ file.split('/')[-1] }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+            <div id="archive-content">
+                <pre>Select a file to view its content</pre>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Deactivate all tab buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Activate selected tab button
+            event.target.classList.add('active');
+        }
+
+        function loadArchive(filename) {
+            fetch(`/archive/${filename}`)
+                .then(response => response.text())
+                .then(content => {
+                    document.getElementById('archive-content').innerHTML = `<pre>${content}</pre>`;
+                })
+                .catch(error => {
+                    document.getElementById('archive-content').innerHTML = '<pre>Error loading file</pre>';
+                });
+        }
+
+        function sendTestEmail() {
+            fetch('/send_test_email')
+                .then(response => response.text())
+                .then(message => {
+                    showToast(message);
+                })
+                .catch(error => {
+                    showToast('Error sending test email');
+                });
+        }
+        
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show';
+            setTimeout(() => {
+                toast.className = toast.className.replace('show', '');
+            }, 3000);
+        }
+    </script>
+</body>
+</html> 
