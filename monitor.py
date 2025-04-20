@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import requests
+import asyncio
+from playwright.async_api import async_playwright
 import hashlib
 import time
 import smtplib
@@ -48,51 +49,60 @@ def archive_content(content):
     
     print(f"Archived content to {filename}")
 
-def extract_text_content(html_content):
-    """Extract just the text content from HTML"""
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # Find the main content container
-    content_div = soup.find('div', id='content_container_1467543')
-    if not content_div:
-        return None
-    
-    # Get all text content
-    text = content_div.get_text(separator='\n', strip=True)
-    
-    # Clean up multiple newlines
-    text = '\n'.join(line for line in text.splitlines() if line.strip())
-    
-    return text
-
-def fetch_webpage():
-    """Fetch the webpage content with fresh session"""
+async def fetch_webpage():
+    """Fetch the webpage content using Playwright and extract the applications section"""
     try:
-        # Create a new session for each request
-        session = requests.Session()
-        
-        # Set headers to mimic a fresh browser visit
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-        
-        # Clear any existing cookies
-        session.cookies.clear()
-        
-        # Make the request
-        response = session.get(TARGET_URL, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # Extract and return just the text content
-        return extract_text_content(response.text)
-    except requests.RequestException as e:
+        async with async_playwright() as p:
+            # Launch browser
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            )
+            
+            # Create a new page
+            page = await context.new_page()
+            
+            # Navigate to the page
+            await page.goto(TARGET_URL, wait_until="networkidle")
+            
+            # Wait for the content to load
+            await page.wait_for_selector("body")
+            
+            # Extract the applications section text
+            content = await page.evaluate("""
+                () => {
+                    // Find the section containing accommodation applications
+                    const sections = Array.from(document.querySelectorAll('div, section'));
+                    let targetSection = null;
+                    
+                    for (const section of sections) {
+                        const text = section.textContent.toLowerCase();
+                        if (text.includes('accommodation applications') && 
+                            text.includes('clayton campus') && 
+                            text.includes('peninsula campus')) {
+                            targetSection = section;
+                            break;
+                        }
+                    }
+                    
+                    if (targetSection) {
+                        return targetSection.textContent.trim();
+                    }
+                    return null;
+                }
+            """)
+            
+            # Close browser
+            await browser.close()
+            
+            if not content:
+                print("Could not find the applications section on the page")
+                return None
+                
+            return content
+    except Exception as e:
         print(f"Error fetching webpage: {e}")
         return None
-    finally:
-        session.close()
 
 def get_webpage_hash(content):
     """Generate a hash of the webpage content"""
@@ -196,12 +206,12 @@ Please visit the page to check: {TARGET_URL}
         print(f"Error sending email: {e}")
         return False
 
-def check_for_changes():
+async def check_for_changes():
     """Check for changes on the webpage"""
     print(f"Checking for changes at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
     
     # Get current content
-    current_content = fetch_webpage()
+    current_content = await fetch_webpage()
     if not current_content:
         print("Failed to fetch webpage. Will try again later.")
         return False
@@ -229,7 +239,7 @@ def check_for_changes():
     print("No changes detected.")
     return False
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description='Monitor Monash Accommodation webpage for changes')
     parser.add_argument('--interval', type=int, default=3600, 
                         help='Interval between checks in seconds (default: 3600 = 1 hour)')
@@ -248,7 +258,7 @@ def main():
         f.write(str(args.interval))
     
     # Initial check
-    check_for_changes()
+    await check_for_changes()
     
     if args.run_once:
         print("Run once mode. Exiting.")
@@ -279,7 +289,7 @@ def main():
                 time.sleep(remaining_time)
             
             # Perform the check
-            check_for_changes()
+            await check_for_changes()
             
     except KeyboardInterrupt:
         print("Monitoring stopped by user.")
@@ -289,4 +299,4 @@ def main():
             os.remove('monitor.pid')
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main()) 
